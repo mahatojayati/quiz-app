@@ -1,4 +1,4 @@
-const questions = [
+const defaultQuestions = [
   {
     question: "Which HTML tag is used to define an internal style sheet?",
     options: ["<css>", "<script>", "<style>", "<link>"],
@@ -36,14 +36,30 @@ const questions = [
   }
 ];
 
+// Load custom questions from localStorage
+let customQuestions = JSON.parse(localStorage.getItem("customQuizQuestions")) || [];
+let activeQuestions = [];
+
 // DOM Elements
 const startScreen = document.getElementById("start-screen");
+const builderScreen = document.getElementById("builder-screen");
 const quizScreen = document.getElementById("quiz-screen");
 const resultScreen = document.getElementById("result-screen");
 
 const startBtn = document.getElementById("start-btn");
+const openBuilderBtn = document.getElementById("open-builder-btn");
+const backHomeBtn = document.getElementById("back-home-btn");
 const nextBtn = document.getElementById("next-btn");
 const restartBtn = document.getElementById("restart-btn");
+const homeBtn = document.getElementById("home-btn");
+
+const totalAvailableEl = document.getElementById("total-available");
+const customForm = document.getElementById("custom-question-form");
+const newQuestionInput = document.getElementById("new-question");
+const optionInputs = document.querySelectorAll(".option-input");
+const customQuestionsList = document.getElementById("custom-questions-list");
+const customCountEl = document.getElementById("custom-count");
+const clearCustomBtn = document.getElementById("clear-custom-btn");
 
 const questionCounter = document.getElementById("question-counter");
 const timeLeftEl = document.getElementById("time-left");
@@ -62,17 +78,114 @@ let timer;
 const TIME_PER_QUESTION = 15;
 let timeLeft = TIME_PER_QUESTION;
 
-// Event Listeners
+// Initialize counts on load
+updateQuestionCounts();
+renderCustomQuestionsList();
+
+// Navigation Event Listeners
 startBtn.addEventListener("click", startQuiz);
-nextBtn.addEventListener("click", handleNextQuestion);
 restartBtn.addEventListener("click", startQuiz);
+homeBtn.addEventListener("click", () => {
+  updateQuestionCounts();
+  switchScreen(startScreen);
+});
+openBuilderBtn.addEventListener("click", () => {
+  renderCustomQuestionsList();
+  switchScreen(builderScreen);
+});
+backHomeBtn.addEventListener("click", () => {
+  updateQuestionCounts();
+  switchScreen(startScreen);
+});
+nextBtn.addEventListener("click", handleNextQuestion);
+
+// Custom Question Form Submission
+customForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const questionTextVal = newQuestionInput.value.trim();
+  const optionsVal = Array.from(optionInputs).map((input) => input.value.trim());
+  const selectedRadio = document.querySelector('input[name="correct-option"]:checked');
+  const answerIndex = parseInt(selectedRadio.value, 10);
+
+  if (!questionTextVal || optionsVal.some((opt) => opt === "")) return;
+
+  const newEntry = {
+    question: questionTextVal,
+    options: optionsVal,
+    answer: answerIndex
+  };
+
+  customQuestions.push(newEntry);
+  saveCustomQuestions();
+  renderCustomQuestionsList();
+  updateQuestionCounts();
+
+  customForm.reset();
+});
+
+clearCustomBtn.addEventListener("click", () => {
+  if (customQuestions.length === 0) return;
+  customQuestions = [];
+  saveCustomQuestions();
+  renderCustomQuestionsList();
+  updateQuestionCounts();
+});
+
+function saveCustomQuestions() {
+  localStorage.setItem("customQuizQuestions", JSON.stringify(customQuestions));
+}
+
+function updateQuestionCounts() {
+  const total = defaultQuestions.length + customQuestions.length;
+  totalAvailableEl.textContent = total;
+  customCountEl.textContent = customQuestions.length;
+}
+
+function renderCustomQuestionsList() {
+  customQuestionsList.innerHTML = "";
+  customCountEl.textContent = customQuestions.length;
+
+  if (customQuestions.length === 0) {
+    const emptyMsg = document.createElement("li");
+    emptyMsg.textContent = "No custom questions added yet.";
+    emptyMsg.style.color = "#64748b";
+    customQuestionsList.appendChild(emptyMsg);
+    return;
+  }
+
+  customQuestions.forEach((item, index) => {
+    const li = document.createElement("li");
+
+    const span = document.createElement("span");
+    span.textContent = `${index + 1}. ${item.question}`;
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "delete-item-btn";
+    delBtn.textContent = "×";
+    delBtn.title = "Delete question";
+    delBtn.addEventListener("click", () => {
+      customQuestions.splice(index, 1);
+      saveCustomQuestions();
+      renderCustomQuestionsList();
+      updateQuestionCounts();
+    });
+
+    li.appendChild(span);
+    li.appendChild(delBtn);
+    customQuestionsList.appendChild(li);
+  });
+}
 
 function switchScreen(screenToShow) {
-  [startScreen, quizScreen, resultScreen].forEach((s) => s.classList.remove("active"));
+  [startScreen, builderScreen, quizScreen, resultScreen].forEach((s) =>
+    s.classList.remove("active")
+  );
   screenToShow.classList.add("active");
 }
 
 function startQuiz() {
+  activeQuestions = [...defaultQuestions, ...customQuestions];
   currentQuestionIndex = 0;
   score = 0;
   switchScreen(quizScreen);
@@ -84,15 +197,13 @@ function loadQuestion() {
   nextBtn.disabled = true;
   optionsContainer.innerHTML = "";
 
-  const currentQuestion = questions[currentQuestionIndex];
-  questionCounter.textContent = `Question ${currentQuestionIndex + 1} of ${questions.length}`;
+  const currentQuestion = activeQuestions[currentQuestionIndex];
+  questionCounter.textContent = `Question ${currentQuestionIndex + 1} of ${activeQuestions.length}`;
   questionText.textContent = currentQuestion.question;
 
-  // Update progress bar
-  const progressPercent = (currentQuestionIndex / questions.length) * 100;
+  const progressPercent = (currentQuestionIndex / activeQuestions.length) * 100;
   progressBar.style.width = `${progressPercent}%`;
 
-  // Render options
   currentQuestion.options.forEach((optionText, index) => {
     const button = document.createElement("button");
     button.classList.add("option-btn");
@@ -121,7 +232,7 @@ function startTimer() {
 
 function selectAnswer(selectedIndex, selectedButton) {
   clearInterval(timer);
-  const correctIndex = questions[currentQuestionIndex].answer;
+  const correctIndex = activeQuestions[currentQuestionIndex].answer;
   const allButtons = optionsContainer.querySelectorAll(".option-btn");
 
   allButtons.forEach((btn) => (btn.disabled = true));
@@ -138,7 +249,7 @@ function selectAnswer(selectedIndex, selectedButton) {
 }
 
 function autoRevealAnswer() {
-  const correctIndex = questions[currentQuestionIndex].answer;
+  const correctIndex = activeQuestions[currentQuestionIndex].answer;
   const allButtons = optionsContainer.querySelectorAll(".option-btn");
 
   allButtons.forEach((btn, idx) => {
@@ -153,7 +264,7 @@ function autoRevealAnswer() {
 
 function handleNextQuestion() {
   currentQuestionIndex++;
-  if (currentQuestionIndex < questions.length) {
+  if (currentQuestionIndex < activeQuestions.length) {
     loadQuestion();
   } else {
     showResults();
@@ -165,9 +276,9 @@ function showResults() {
   switchScreen(resultScreen);
 
   finalScoreEl.textContent = score;
-  totalQuestionsEl.textContent = questions.length;
+  totalQuestionsEl.textContent = activeQuestions.length;
 
-  const percentage = (score / questions.length) * 100;
+  const percentage = (score / activeQuestions.length) * 100;
   if (percentage === 100) {
     feedbackMessage.textContent = "Perfect score! Outstanding work.";
   } else if (percentage >= 60) {
